@@ -1,0 +1,84 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VS Code settings
+.vscode/
+
+# macOS
+.DS_Store
+
+# Log files
+logs/
+*.log
+
+# Test cache
+.pytest_cache/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+
+# MyPy, Pylint, Bandit, etc.
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pylint.d/
+.cache/
+
+# FastAPI / Uvicorn specific
+instance/
+*.db
+*.sqlite3
+
+# IDE specific
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# OS generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Local config files
+.env
+.env.*
+
+# Pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+*.orig
+*.old
+
+# Docker (if applicable in future)
+*.pid
+
+# Project files
+app/app2.py
