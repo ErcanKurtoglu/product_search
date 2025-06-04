@@ -11,6 +11,9 @@ import re
 import logging
 import os
 from app.logger import get_logger
+from app.database import get_permanent_session
+import app.exceptions as ex
+from app.db_models import SearchRecord
 
 # Get the logger for this module. Its name will be 'app.scraper'.
 log = get_logger(__name__)
@@ -34,6 +37,7 @@ retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504]
 session.mount("https://", HTTPAdapter(max_retries=retries))
 session.mount("http://", HTTPAdapter(max_retries=retries))
 
+
 def scrape_amazon_products(query: str) -> List[Product]:
   """
   Scrapes Amazon for products based on a given query.
@@ -50,19 +54,30 @@ def scrape_amazon_products(query: str) -> List[Product]:
     log.info(f"Successfully fetched page for query: '{query}' (Status: {response.status_code})")
   except requests.exceptions.Timeout as e:
       log.error(f"[SCRAPE] Timeout error while fetching URL: {search_url}. Exception: {e}")
-      raise Exception(f"Request timed out while fetching data from Amazon for query '{query}'.")
+      raise ex.ScraperTimeoutError(f"Request timed out while fetching data for query '{query}'.")
+      # raise Exception(f"Request timed out while fetching data from Amazon for query '{query}'.")
   except requests.exceptions.ConnectionError as e:
       log.error(f"[SCRAPE] Connection error while fetching URL: {search_url}. Exception: {e}")
-      raise Exception(f"Connection error to Amazon for query '{query}'. Please check your network.")
+      raise ex.ScraperConnectionError(f"Connection error for query '{query}'. Please check your network.")
+      # raise Exception(f"Connection error to Amazon for query '{query}'. Please check your network.")
+  except requests.exceptions.HTTPError as e:
+     status_code = response.status_code if "response" in locals() else None
+     log.error(f"[SCRAPE] HTTP error {status_code} for URL: {search_url}. Exception {e}")
+     raise ex.ScraperHTTPError(status_code=status_code, message=f"Returned HTTP {status_code}")
   except requests.exceptions.RequestException as e:
       # Catch any other request-related exceptions, including HTTPError from raise_for_status()
-      log.error(f"[SCRAPE] Amazon request failed for query: '{query}'. Status: {response.status_code if 'response' in locals() else 'N/A'}. Exception: {e}")
+      log.error(f"[SCRAPE] Request failed for query: '{query}'. Status: {response.status_code if 'response' in locals() else 'N/A'}. Exception: {e}")
       # Re-raise a more generic exception for the caller
-      raise Exception(f"Failed to fetch data from Amazon for query '{query}'. Details: {e}")
+      raise ex.ScraperException(f"Generic request failure for query '{query}': {e}")
+      # raise Exception(f"Failed to fetch data from Amazon for query '{query}'. Details: {e}")
   
   # Parse the HTML content
-  soup = BeautifulSoup(response.content, "html.parser")
-  log.debug("HTML content parsed with BeautifulSoup.")
+  try:
+    soup = BeautifulSoup(response.content, "html.parser")
+    log.debug("HTML content parsed with BeautifulSoup.")
+  except Exception as e:
+    log.error(f"[SCRAPE] BeautifulSoup parsing failed for query: '{query}'. Exception: {e}")
+    raise ex.ScraperParsingError(f"HTML parsing failed for query '{query}': {e}")
 
   product_list = list()
 
@@ -78,50 +93,82 @@ def scrape_amazon_products(query: str) -> List[Product]:
   for idx, item in enumerate(results):
     log.debug(f"Processing product item #{idx + 1}")
 
-    title = safe_extract(item, selector="h2 span", field_name="Title")
-    link = safe_extract(item, selector="a", field_name="Link")
-    price_whole = safe_extract(item, selector=".a-price .a-offscreen", field_name="Price")
-    rating_elem = safe_extract(item, selector="i.a-icon-star-small span", field_name="Rating")
-    review_count_elem = safe_extract(item, selector="span[data-component-type='s-client-side-analytics']", field_name="Review Count")
-    image_url = safe_extract(item, selector="img.s-image", field_name="Image")
-    # price_whole = item.select_one(".a-price-whole") #item.select_one(".a-price .a-offscreen") whole price
-    # price_fraction = item.select_one(".a-price-fraction")
+    try:
+
+      title = safe_extract(item, selector="h2 span", field_name="Title")
+      link = safe_extract(item, selector="a", field_name="Link")
+      price_whole = safe_extract(item, selector=".a-price .a-offscreen", field_name="Price")
+      rating_elem = safe_extract(item, selector="i.a-icon-star-small span", field_name="Rating")
+      review_count_elem = safe_extract(item, selector="span[data-component-type='s-client-side-analytics']", field_name="Review Count")
+      image_url = safe_extract(item, selector="img.s-image", field_name="Image")
+      # price_whole = item.select_one(".a-price-whole") #item.select_one(".a-price .a-offscreen") whole price
+      # price_fraction = item.select_one(".a-price-fraction")
 
 
-    if title and link:
-      # Process Link
-      url = urljoin("https://www.amazon.com", link)
-      log.debug(f"Processed link: {url}")
-      
-      # Process Price
-      price = _process_price(price_whole, idx)
-      # Process Rating
-      rating = _process_rating(rating_elem, idx)
-      # Process Review Count
-      review_count = _process_review_count(review_count_elem, idx)
-      
-      # Determine validity for the product
-      valid = all([title, price, rating, review_count, url, image_url])
-      if not valid:
-          log.warning(f"Product item #{idx + 1} is missing critical data. \
+      if title and link:
+        # Process Link
+        url = urljoin("https://www.amazon.com", link)
+        log.debug(f"Processed link: {url}")
+        
+        # Process Price
+        price = _process_price(price_whole, idx)
+        # Process Rating
+        rating = _process_rating(rating_elem, idx)
+        # Process Review Count
+        review_count = _process_review_count(review_count_elem, idx)
+        
+        # Determine validity for the product
+        valid = all([title, price, rating, review_count, url, image_url])
+        if not valid:
+            log.warning(f"Product item #{idx + 1} is missing critical data. \
 Title: {bool(title)}, Price: {bool(price)}, Rating: {rating is not None}, \
 Reviews: {bool(review_count)}, URL: {bool(url)}, Image: {bool(image_url)}")
-          
-      product = Product(
-        title = title,
-        price = price,
-        rating = rating,
-        review_count=review_count,
-        product_url=url,
-        image_url = image_url,
-        valid = valid
-      )
+            
+        product = Product(
+          title = title,
+          price = price,
+          rating = rating,
+          review_count=review_count,
+          product_url=url,
+          image_url = image_url,
+          valid = valid
+        )
 
-      product_list.append(product)
-    else:
-      log.warning(f"Product item #{idx + 1} has no valid title or link found. Skipping.")
+        product_list.append(product)
+      else:
+        log.warning(f"Product item #{idx + 1} has no valid title or link found. Skipping.")
+        raise ex.ScraperParsinError("Missing title or link element")
+    except ex.ScraperParsinError as e:
+       log.warning(f"[SCRAPE] Skipped one item due to parsing error: {e}")
+       continue
+    except Exception as e:
+       log.error(f"[SCRAPE] Unexpected error while parsing one item: {e}")
+       raise ex.ScraperParsinError(f"Unexpected parsing failure: {e}")    
   
+
+  # Write the datas into DB
+  try:
+    session_record = get_permanent_session()
+    for p in product_list:
+      record = SearchRecord(
+          query=query,
+          title=p.title,
+          price=p.price,
+          rating=p.rating,
+          review_count=p.review_count,
+          product_url=p.product_url,
+          image_url=p.image_url,
+          valid=p.valid
+      )
+      session_record.add(record)
+    session_record.commit()
+  except Exception as e:
+    log.error(f"[SCRAPE] Failed to save search results to DB: {e}")
+  finally:
+     session.close()
+
   log.info(f"Finished scraping for query: '{query}'. Total products: {len(product_list)}")
+  log.info("Values committed into DB.")
   return product_list
 
 

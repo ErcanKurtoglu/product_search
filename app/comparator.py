@@ -6,7 +6,7 @@ from logger import get_logger
 
 log = get_logger(__name__)
 
-def sort_products(products: List[Product], sort_by: str = "price", ascending: bool = False) -> List[Product]:
+def sort_products(products: List[Product], sort_by: str = "price", descending: bool = False) -> List[Product]:
   """
   Compare and sort a list of products based on the selected criteria.
 
@@ -24,10 +24,12 @@ def sort_products(products: List[Product], sort_by: str = "price", ascending: bo
     key_func = lambda p: p.rating if p.rating is not None else 0.0
   elif sort_by == "review_count":
     key_func = lambda p: p.review_count if p.review_count is not None else 0
+  elif sort_by == "title":
+    key_func = lambda p: p.title if p.title is not None else 0
   else:
     raise ValueError("Invalid sort_by value. Use 'price', 'rating', or 'review_count'.")
   
-  return sorted(products, key=key_func, reverse=ascending)
+  return sorted(products, key=key_func, reverse=descending)
 
 def filter_products(products: List[Product], min_price: float = None, max_price: float = None, min_rating: int = None) -> List[Product]:
   if min_price is not None and max_price is not None and min_rating is not None:
