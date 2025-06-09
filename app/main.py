@@ -10,11 +10,10 @@ from sqlmodel import select
 from typing import List, Optional
 from app.scraper import scrape_amazon_products
 from app.models import Product
-from app.database import init_parmanent_db, get_permanent_session
-from app.db_models import SearchRecord
+from app.database import init_permanent_db, init_temp_app_db, init_temp_hist_db
 import app.exceptions as ex
+from app.search_service import search_and_copy_to_hist_temp_db
 
-import logging
 from app.logger import configure_logging, get_logger
 configure_logging()
 
@@ -24,7 +23,10 @@ log.info("FastAPI application is starting...")
 @asynccontextmanager
 async def lifespan(app:FastAPI):
   # Application startup
-  init_parmanent_db()
+  init_permanent_db()
+  init_temp_app_db()
+  init_temp_hist_db()
+
   yield
   # If need can be added here for shutdown
 
@@ -70,36 +72,45 @@ def search_products(query: str = Query(..., description="Search term for product
   return products
 
 
-@app.get("/history", response_model=List[SearchRecord])
+@app.get("/history", response_model=List[Product])
 def get_records_for_query(
   query: str = Query(..., description="Search in database")
-  ) -> List[SearchRecord]:
+  ):
   """
   Returns SearchRecord rows from the DB for the given 'query' text.
   Order feature can be selected dinamicly.
   """
 
-  session_history = get_permanent_session()
   try:
-    # Foundational query
-    statement = (
-      select(SearchRecord)
-      .where(SearchRecord.query==query)
-      .order_by(SearchRecord.title.asc())
-    )
-
-    records = session_history.exec(statement).all()
-
-    if not records:
-      raise HTTPException(status_code=404, detail=f"No records found for query '{query}'")
-    
-    return records
-  except HTTPException:
-    raise
+    products = search_and_copy_to_hist_temp_db(query)
   except Exception as e:
-    raise HTTPException(status_code=500, detail=f"Error fetching records for '{query}': {e}")
-  finally:
-    session_history.close()
+    log.error(f"[API] Search error: {str(e)}")
+    raise HTTPException(status_code=500, detail=f"Database transaction error: {e}")
+  if not products:
+    raise HTTPException(status_code=404, detail=f"No records found for query '{query}'")
+  return products
+
+  # session_history = get_permanent_session()
+  # try:
+  #   # Foundational query
+  #   statement = (
+  #     select(SearchRecord)
+  #     .where(SearchRecord.query==query)
+  #     .order_by(SearchRecord.title.asc())
+  #   )
+
+  #   records = session_history.exec(statement).all()
+
+  #   if not records:
+  #     raise HTTPException(status_code=404, detail=f"No records found for query '{query}'")
+    
+  #   return records
+  # except HTTPException:
+  #   raise
+  # except Exception as e:
+  #   raise HTTPException(status_code=500, detail=f"Error fetching records for '{query}': {e}")
+  # finally:
+  #   session_history.close()
 
 
 @app.get("/")
@@ -119,7 +130,7 @@ def healthcheck():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    log.error(f"Unhandled exception: {exc}", exc_info=True)
+    log.error(f"Global Exeption Unhandled Exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error"},

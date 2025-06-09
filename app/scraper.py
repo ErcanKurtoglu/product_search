@@ -11,9 +11,9 @@ import re
 import logging
 import os
 from app.logger import get_logger
-from app.database import get_permanent_session
+from app.database import (get_permanent_session, get_temp_app_session, clear_database)
 import app.exceptions as ex
-from app.db_models import SearchRecord
+from app.db_models import SearchRecord, TempAppSearchRecord
 
 # Get the logger for this module. Its name will be 'app.scraper'.
 log = get_logger(__name__)
@@ -120,9 +120,7 @@ def scrape_amazon_products(query: str) -> List[Product]:
         # Determine validity for the product
         valid = all([title, price, rating, review_count, url, image_url])
         if not valid:
-            log.warning(f"Product item #{idx + 1} is missing critical data. \
-Title: {bool(title)}, Price: {bool(price)}, Rating: {rating is not None}, \
-Reviews: {bool(review_count)}, URL: {bool(url)}, Image: {bool(image_url)}")
+            log.warning(f"Product item #{idx + 1} is missing critical data. Title: {bool(title)}, Price: {bool(price)}, Rating: {rating is not None}, Reviews: {bool(review_count)}, URL: {bool(url)}, Image: {bool(image_url)}")
             
         product = Product(
           title = title,
@@ -144,11 +142,21 @@ Reviews: {bool(review_count)}, URL: {bool(url)}, Image: {bool(image_url)}")
     except Exception as e:
        log.error(f"[SCRAPE] Unexpected error while parsing one item: {e}")
        raise ex.ScraperParsinError(f"Unexpected parsing failure: {e}")    
-  
 
-  # Write the datas into DB
+  # Write data to both permanent DB (app.db) and live search temp DB (temp_app.db)
+  permanent_session = None
+  temp_app_session = None
+
   try:
-    session_record = get_permanent_session()
+    # Save to permanent database
+    permanent_session = get_permanent_session()
+
+    # First clear previous data in temp app database
+    clear_database(selection="temp_app")
+    # Save to live search temp database for immediate filtering
+    temp_app_session = get_temp_app_session()
+
+    # Save app.db
     for p in product_list:
       record = SearchRecord(
           query=query,
@@ -160,15 +168,39 @@ Reviews: {bool(review_count)}, URL: {bool(url)}, Image: {bool(image_url)}")
           image_url=p.image_url,
           valid=p.valid
       )
-      session_record.add(record)
-    session_record.commit()
+      permanent_session.add(record)
+      
+      # Save temp_app.db
+      record_temp = TempAppSearchRecord(
+          query=query,
+          title=p.title,
+          price=p.price,
+          rating=p.rating,
+          review_count=p.review_count,
+          product_url=p.product_url,
+          image_url=p.image_url,
+          valid=p.valid
+      )
+      temp_app_session.add(record_temp)
+
+    permanent_session.commit()
+    temp_app_session.commit()
+    log.info(f"Successfully saved {len(product_list)} products to permanent database for query: {query}")
+    log.info(f"Successfully saved {len(product_list)} products to live search temp database for query: '{query}'")
+
   except Exception as e:
     log.error(f"[SCRAPE] Failed to save search results to DB: {e}")
+    if permanent_session:
+       permanent_session.rollback()
+    if temp_app_session:
+       temp_app_session.rollback()
   finally:
-     session.close()
+    if permanent_session:
+       permanent_session.close()
+    if temp_app_session:
+       temp_app_session.close()
 
   log.info(f"Finished scraping for query: '{query}'. Total products: {len(product_list)}")
-  log.info("Values committed into DB.")
   return product_list
 
 
