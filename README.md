@@ -11,6 +11,9 @@ This project is a dynamic web scraper that retrieves product data from Amazon.co
 - ✅ Product validity check for data completeness
 - 🔁 Built-in retry strategy for unstable connections
 - 📄 Structured JSON logging (file + console)
+- 💾 SQLite database to store results  
+- 🧮 Filter and sort products by price, rating, and review count using efficient DB queries  
+- ⬇️ One-click export and download of filtered results as CSV or JSON  
 - ⚙️ Development & production environment modes
 
 ---
@@ -21,6 +24,7 @@ This project is a dynamic web scraper that retrieves product data from Amazon.co
 - **BeautifulSoup4** — HTML parsing
 - **Requests + Retry** — HTTP connection handling
 - **Pydantic** — Data modeling
+- **SQLite + SQLModel** — Lightweight database and ORM for data persistence and filtering
 - **Logging** — Structured JSON log system
 - **RotatingFileHandler** — File-based rotating logging system
 
@@ -54,7 +58,7 @@ pip install -r requirements.txt
 ```bash
 python run.py
 ```
-The application will be opened via web browser or can be opened manually `localhost:8501`
+The application will be opened via web browser or can be opened manually `localhost:5000`
 
 ### Run the API only
 
@@ -109,8 +113,16 @@ product_search/
 │   ├── main.py             # FastAPI app
 │   ├── scraper.py          # Scraper logic
 │   ├── models.py           # Pydantic models
-│   ├── comparator.py       # Filter and order
+│   ├── db_models.py        # SQLModel ORM models
+│   ├── databese.py         # DB setup
+│   ├── search_service.py   # Search & filtering services with DB queries
+│   ├── exceptions.py       # Defined exception classes
 │   └── logger.py           # JSON logger config
+│
+├── db/
+│   ├── app.db              # All product db 
+│   ├── temp_app.db         # Live search products filtered db 
+│   ├── temp_hist.db        # Historical search products filtered db 
 │
 ├── tests/
 │   └── test_api.py    # App test 

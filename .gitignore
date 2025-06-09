@@ -83,3 +83,5 @@ dist/
 # Project files
 app/app2.py
 app/backupfiles.py
+app/test_scraper_amazon.py
+app/comparator.py

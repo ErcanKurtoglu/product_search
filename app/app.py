@@ -148,19 +148,22 @@ def run_live_search():
 				st.error(f"Unexpected error: {e}")
 				log.exception(f"Streamlit unexpected error for: '{query}'. Exception {e}")
 	
+	# Download buttons
 	if st.session_state.products_live:
 		with st.container():
 			col1, col2 = st.columns([1,1])
 
 			with col1:
-				download_condition = download_datas(st.session_state.products_live, "json")
+				download_condition_json = download_datas(st.session_state.products_live, "json")
 			
 			with col2:
-				download_condition = download_datas(st.session_state.products_live, "csv")
-		if download_condition:
-			log.info(f"{download_condition} file has been downloaded")
-			st.success(f"{download_condition} file has been downloaded")
-
+				download_condition_csv = download_datas(st.session_state.products_live, "csv")
+		if download_condition_json:
+			log.info(f"{download_condition_json} file has been downloaded")
+			st.success(f"{download_condition_json} file has been downloaded")
+		if download_condition_csv:
+			log.info(f"{download_condition_csv} file has been downloaded")
+			st.success(f"{download_condition_csv} file has been downloaded")
 
 	# # Display filtered results using SQL ifltering on temp_app.db
 	if st.session_state.get("products_live", False): #st.session_state.get("live_search_completed", False):
@@ -201,70 +204,6 @@ def run_live_search():
 	else:
 		st.info("No products to display.")
 		log.info("No products found after applying filters.")
-
-	#         if filtered_products:
-				
-	#     st.markdown(
-	#         "<div style='max-height: 600px; overflow-y: auto; padding-right: 10px;'>",
-	#         unsafe_allow_html=True,
-	#     )
-	#     log.debug(f"Displaying {len(st.session_state.filtered_products)} filtered products.")
-	#     for p in st.session_state.filtered_products:
-	#         with st.container():
-	#             cols = st.columns([1, 4])
-	#             with cols[0]:
-	#                 st.image(p.image_url, width=130)
-	#             with cols[1]:
-	#                 if p.price is not None:
-	#                     shown_price = '$'+ str(p.price)
-	#                 else:
-	#                     shown_price = "**No price value detected. Check link.**"
-	#                 if p.rating is not None:
-	#                     shown_rating = p.rating
-	#                 else:
-	#                     shown_rating = "**No rating value detected.**"
-	#                 if p.review_count is not None:
-	#                     shown_review_count = p.review_count
-	#                 else:
-	#                     shown_review_count = "**No review value detected.**"
-
-	#                 st.markdown(f"**{p.title}**")
-	#                 st.markdown(f"💰Price: {shown_price}")
-	#                 st.markdown(f"⭐Rating: {shown_rating}")
-	#                 st.markdown(f"💬Review count: {shown_review_count}")
-	#                 st.markdown(f"""🔗<a href="{p.product_url}" target="_blank">View Product</a>""", unsafe_allow_html=True)
-	#                 st.markdown("---")
-	#     st.markdown("</div>", unsafe_allow_html=True)
-	# elif not st.session_state.error:
-	#     st.info("No products to display. Please run a search.")
-	#     log.info("No products to display yet (initial state or no search conducted).")
-	# elif len(st.session_state.filtered_products) == 0:
-	#     st.info("No products to display.")
-	#     log.info("No products found after applying filters.")
-	
-	# # Product and Filtered product counts
-	# with st.sidebar:
-	# 	st.markdown("---")
-	# 	st.markdown(
-	# 		f"""
-	# 		<div style='background-color: transparent; padding: 10px; border-radius: 8px;'>
-	# 			<span style='font-size: 0.9em;'>Number of products:&nbsp;</span>
-	# 			<strong style='font-size: 1.1em;'>{len(st.session_state.products)}</strong>
-	# 		</div>
-	# 		""",
-	# 		unsafe_allow_html=True
-	# 	)
-
-	# 	st.markdown(
-	# 		f"""
-	# 		<div style='background-color: transparent; padding: 10px; border-radius: 8px;'>
-	# 			<span style='font-size: 0.9em;'>Filtered products:&nbsp;</span>
-	# 			<strong style='font-size: 1.1em;'>{len(st.session_state.filtered_products)}</strong>
-	# 		</div>
-	# 		""",
-	# 		unsafe_allow_html=True
-	# 	)
-	# log.debug("Sidebar product count updated.")
 
 
 def run_historical_search():
@@ -322,6 +261,22 @@ def run_historical_search():
 				log.exception(f"API connection error for query: '{query}'. Exception {e}")
 				return
 
+	# Download buttons
+	if st.session_state.products_hist:
+		with st.container():
+			col1, col2 = st.columns([1,1])
+
+			with col1:
+				download_condition_json = download_datas(st.session_state.products_live, "json")
+			
+			with col2:
+				download_condition_csv = download_datas(st.session_state.products_live, "csv")
+		if download_condition_json:
+			log.info(f"{download_condition_json} file has been downloaded")
+			st.success(f"{download_condition_json} file has been downloaded")
+		if download_condition_csv:
+			log.info(f"{download_condition_csv} file has been downloaded")
+			st.success(f"{download_condition_csv} file has been downloaded")
 
 	# Display filtered results using SQL filtering on temp_hist.db
 	if st.session_state.get("products_hist", False): #st.session_state.get("hist_search_completed", False):
@@ -509,6 +464,12 @@ def initialize_sessions():
 	if "error" not in st.session_state:
 		st.session_state.error = None
 		log.debug("Session state 'error' initialized.")
+	if "products_live" not in st.session_state:
+		st.session_state.products_live = None
+		log.debug("Session state 'products_live' initialized.")
+	if "products_hist" not in st.session_state:
+		st.session_state.products_hist = None
+		log.debug("Session state 'products_hist' initialized.")
 
 
 def handle_mode_change(): # replit ile eklendi
