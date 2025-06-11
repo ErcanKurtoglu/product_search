@@ -18,6 +18,6 @@ class ScraperHTTPError(ScraperException):
     self.message = message or f"HTTP error {status_code}"
     super().__init__(self.message)
 
-class ScraperParsinError(ScraperException):
+class ScraperParsingError(ScraperException):
   """HTML parse or date parsing error"""
   pass

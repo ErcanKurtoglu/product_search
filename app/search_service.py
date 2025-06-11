@@ -115,7 +115,7 @@ def filter_hist_temp_products(
   Returns:
     List[Product]: List of filtered products from temp_hist db
   """
-  log.info(f"Filtering historical temp products with min_price={min_price}, max_price={max_price}, min_rating={min_rating}")
+  log.info(f"Filtering historical temp products with min_price={min_price}, max_price={max_price}, min_rating={min_rating}, sort_by={sort_by}, order={order}, duplicate={duplicate}")
 
   hist_temp_session = get_temp_hist_session()
   products = list()
@@ -127,22 +127,20 @@ def filter_hist_temp_products(
     # Apply price filters
     if min_price is not None and min_price > 0:
       statement = statement.where(TempHistSearchRecord.price >= min_price)
-      log.debug(f"Applied min_price filter: {min_price}")
+
     if max_price is not None and max_price > 0:
       statement = statement.where(TempHistSearchRecord.price <= max_price)
-      log.debug(f"Applied max_price filter: {max_price}")
     
     # Apply rating filter
     if min_rating is not None and min_rating > 0:
-      statement = statement.where(TempHistSearchRecord.rating >= min_rating)
-      log.debug(f"Applied min_rating filter: {min_rating}")
-    
-    if duplicate:
-      statement = statement.group_by(TempHistSearchRecord.title, TempHistSearchRecord.price)
+      statement = statement.where(TempHistSearchRecord.rating >= min_rating)  
 
     if sort_by not in ["price", "rating", "review_count", "title"]:
       sort_by = "price"
 
+    if duplicate:
+      statement = statement.group_by(TempHistSearchRecord.title, TempHistSearchRecord.price)
+    
     # Add ordering by selected sort
     sort_attr = getattr(TempHistSearchRecord, sort_by)
     statement = statement.order_by(sort_attr.asc().nullslast() if order == "asc" else sort_attr.desc())
@@ -238,7 +236,7 @@ def filter_app_temp_products(
   Returns:
     List[Product]: List of filtered products from temp_app db
   """
-  log.info(f"Filtering historical temp products with min_price={min_price}, max_price={max_price}, min_rating={min_rating}")
+  log.info(f"Filtering historical temp products with min_price={min_price}, max_price={max_price}, min_rating={min_rating}, sort_by={sort_by}, order={order}")
 
   app_temp_session = get_temp_app_session()
   products = list()
@@ -250,15 +248,12 @@ def filter_app_temp_products(
     # Apply price filters
     if min_price is not None and min_price > 0:
       statement = statement.where(TempAppSearchRecord.price >= min_price)
-      log.debug(f"Applied min_price filter: {min_price}")
     if max_price is not None and max_price > 0:
       statement = statement.where(TempAppSearchRecord.price <= max_price)
-      log.debug(f"Applied max_price filter: {max_price}")
     
     # Apply rating filter
     if min_rating is not None and min_rating > 0:
       statement = statement.where(TempAppSearchRecord.rating >= min_rating)
-      log.debug(f"Applied min_rating filter: {min_rating}")
 
     if sort_by not in ["price", "rating", "review_count", "title"]:
       sort_by = "price"

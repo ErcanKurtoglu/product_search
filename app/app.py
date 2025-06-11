@@ -4,7 +4,6 @@ import streamlit as st
 import requests
 import json
 import pandas as pd
-from io import StringIO
 from models import Product
 from logger import configure_logging, get_logger
 from search_service import filter_app_temp_products, filter_hist_temp_products, get_all_temp_products
@@ -89,6 +88,7 @@ def run_live_search():
 	Live Search mode:
 	- Scrapes new data and saves to both app.db and temp_app.db
 	- Uses SQL-based filtering on temp_app.db for performance
+	- Suppoerts pagination with configurable page count
 	"""
 	# Header
 	st.header("Live Search")
@@ -102,12 +102,15 @@ def run_live_search():
 	# Filter parameters
 	filter_parameters()
 
+	# Pagination controls in sidebar
+	pagination_parameters()
+
 	# Search input
 	query = st.text_input("Search product", placeholder="Ex: headphones", key="live_search_query")
 
 	# Search Product
 	if st.button("Search"):
-		log.info(f"Search button clicked. Query: '{query}'")
+		log.info(f"Search button clicked. Query: '{query}' with {st.session_state.max_pages}")
 		if not query.strip():
 			st.warning("Please type a product!")
 			log.warning("User attempted search with empty query.")
@@ -117,15 +120,16 @@ def run_live_search():
 			try:
 				# Scrape new data (saves to both app.dp and temp_app.db)
 				log.info(f"Attempting to call API for query: '{query}' at {API_URL}/search")
-				response = requests.get(f"{API_URL}/search", params={"query":query})
+				response = requests.get(f"{API_URL}/search", params={"query":query, "max_pages":st.session_state.max_pages})
 
 				if response.status_code == 200:
 					products_live = [Product(**prod_dict) for prod_dict in response.json()]
 					st.session_state.products_live = products_live
 					st.session_state.live_query = query
+					st.session_state.live_pages_scraped = st.session_state.max_pages
 
-					st.success(f"Found {len(products_live)} products and saved to databases")
-					log.info(f"Live search successful. Found {len(products_live)} products for query: '{query}'.")
+					st.success(f"Found {len(products_live)} products across {st.session_state.max_pages} and saved to databases")
+					log.info(f"Live search successful. Found {len(products_live)} products across {st.session_state.max_pages} for query: '{query}'.")
 				elif response.status_code == 404:
 					st.info("Product has not been found.")
 					log.warning(f"API returned 404 (Not Found) for query: '{query}'.")
@@ -177,7 +181,8 @@ def run_live_search():
 			)
 
 			query_display = st.session_state.get("live_query","")
-			all_products = get_all_temp_products("live")				
+			all_products = get_all_temp_products("live")
+			pages_scraped = st.session_state.get("live_pages_scraped", 1)
 
 			if filtered_products:
 				st.markdown(f"## 🔍 Live Search Results for \"{query_display}\"")
@@ -188,6 +193,7 @@ def run_live_search():
 					st.markdown("---")
 					st.metric("Total Found", len(all_products))
 					st.metric("After Filters", len(filtered_products))
+					st.metric("Pages Scraped", pages_scraped)
 			else:
 				st.warning("No products match the current filter criteria")
 
@@ -411,6 +417,21 @@ def filter_parameters():
 	st.session_state.order = order
 
 
+def pagination_parameters():
+	"""Display pagination controls in sidebar."""
+	st.sidebar.header("📄 Pagination")
+
+	# Page count selector
+	page_options = list(range(1,11)) # 1-10 pages
+	st.sidebar.selectbox(
+		"Page to Scrape",
+		page_options,
+		index=0,
+		key="max_pages",
+		help="Select how many pages to scrape (1-10). More pages = more products but slower scraping."
+	)
+
+
 def download_datas(products:List[Product], data_type:str):
 	"""
 	Download datas as JSON or CSV format.
@@ -461,6 +482,9 @@ def initialize_sessions():
 	if "duplicate" not in st.session_state:
 		st.session_state.duplicate = False
 		log.debug("Session state 'duplicate' initialized.")
+	if "max_pages" not in st.session_state:
+		st.session_state.max_pages = 1
+		log.debug("Session state 'max_pages' initialized.")
 	if "error" not in st.session_state:
 		st.session_state.error = None
 		log.debug("Session state 'error' initialized.")

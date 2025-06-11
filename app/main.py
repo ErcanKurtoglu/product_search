@@ -33,19 +33,24 @@ async def lifespan(app:FastAPI):
 
 app = FastAPI(title="Smart Web Scraper",
               lifespan=lifespan,
-              description="A dynamic web scraper API for collecting and comparing e-commerce product data from Amazon.",
-              version="1.0.0")
+              description="A dynamic web scraper API for collecting and comparing e-commerce product data from Amazon with dual database system.",
+              version="1.1.0")
 
 
 @app.get("/search", response_model=List[Product])
-def search_products(query: str = Query(..., description="Search term for products")):
+def search_products(
+  query: str = Query(..., description="Search term for products"),
+  max_pages: int = Query(1, description="Maximum number of pages to scrape (1-10)", ge=1, le=10)
+  ):
   
   """
   Scrape Amazon for products based on the given search query and return sorted results.
+  Products are automatically saved to the permanent database (app.db) and temp_app.db.
+  Suppoerts pagination with configurable page count (1-10 pages).
   """
-  log.info(f"/search endpoint called with query='{query}'")
+  log.info(f"/search endpoint called with query='{query}' and max_pages={max_pages}")
   try:
-    products = scrape_amazon_products(query)
+    products = scrape_amazon_products(query, max_pages)
   except ex.ScraperTimeoutError as e:
     log.error(f"[API] TimeoutError for query '{query}': {e}")
     raise HTTPException(status_code=408, detail=str(e))
@@ -59,7 +64,7 @@ def search_products(query: str = Query(..., description="Search term for product
       raise HTTPException(status_code=404, detail=f"No products found (HTTP 404) for  '{query}'.")
     else:
       raise HTTPException(status_code=502, detail=f"HTTP {e.status_code}: {e.message}")
-  except ex.ScraperParsinError as e:
+  except ex.ScraperParsingError as e:
     log.error(f"[API] ParsingError for query '{query}': {e}")
     raise HTTPException(status_code=500, detail=f"Parsing error: {e}")
   except Exception as e:
@@ -75,9 +80,9 @@ def search_products(query: str = Query(..., description="Search term for product
 @app.get("/history", response_model=List[Product])
 def get_records_for_query(
   query: str = Query(..., description="Search in database")
-  ):
+  ) -> List[Product]:
   """
-  Returns SearchRecord rows from the DB for the given 'query' text.
+  Returns List[Product] rows from the permanent database (app.db) for the given 'query' text.
   Order feature can be selected dinamicly.
   """
 
@@ -89,28 +94,6 @@ def get_records_for_query(
   if not products:
     raise HTTPException(status_code=404, detail=f"No records found for query '{query}'")
   return products
-
-  # session_history = get_permanent_session()
-  # try:
-  #   # Foundational query
-  #   statement = (
-  #     select(SearchRecord)
-  #     .where(SearchRecord.query==query)
-  #     .order_by(SearchRecord.title.asc())
-  #   )
-
-  #   records = session_history.exec(statement).all()
-
-  #   if not records:
-  #     raise HTTPException(status_code=404, detail=f"No records found for query '{query}'")
-    
-  #   return records
-  # except HTTPException:
-  #   raise
-  # except Exception as e:
-  #   raise HTTPException(status_code=500, detail=f"Error fetching records for '{query}': {e}")
-  # finally:
-  #   session_history.close()
 
 
 @app.get("/")

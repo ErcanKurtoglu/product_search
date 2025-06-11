@@ -8,8 +8,9 @@ from bs4 import BeautifulSoup
 from typing import List
 from app.models import Product
 import re
-import logging
 import os
+import time
+import random
 from app.logger import get_logger
 from app.database import (get_permanent_session, get_temp_app_session, clear_database)
 import app.exceptions as ex
@@ -38,46 +39,107 @@ session.mount("https://", HTTPAdapter(max_retries=retries))
 session.mount("http://", HTTPAdapter(max_retries=retries))
 
 
-def scrape_amazon_products(query: str) -> List[Product]:
+def scrape_amazon_products(query: str, max_pages: int=1) -> List[Product]:
   """
-  Scrapes Amazon for products based on a given query.
-  Handles network requests, HTML parsing, and data extraction.
-  """
-  log.info(f"Initiating Amazon product scraping for query: '{query}'")
+  Scrapes Amazon for products based on a given query with pagination support.
+  Handles network requests, HTML parsing, and data extraction across multiple pages.
 
-  search_url = f"https://www.amazon.com/s?k={query.replace(" ", "+")}"
-  log.debug(f"Constructed search URL: {search_url}")
-
-  try:
-    response = session.get(search_url, headers=headers, timeout=10)
-    response.raise_for_status()
-    log.info(f"Successfully fetched page for query: '{query}' (Status: {response.status_code})")
-  except requests.exceptions.Timeout as e:
-      log.error(f"[SCRAPE] Timeout error while fetching URL: {search_url}. Exception: {e}")
-      raise ex.ScraperTimeoutError(f"Request timed out while fetching data for query '{query}'.")
-      # raise Exception(f"Request timed out while fetching data from Amazon for query '{query}'.")
-  except requests.exceptions.ConnectionError as e:
-      log.error(f"[SCRAPE] Connection error while fetching URL: {search_url}. Exception: {e}")
-      raise ex.ScraperConnectionError(f"Connection error for query '{query}'. Please check your network.")
-      # raise Exception(f"Connection error to Amazon for query '{query}'. Please check your network.")
-  except requests.exceptions.HTTPError as e:
-     status_code = response.status_code if "response" in locals() else None
-     log.error(f"[SCRAPE] HTTP error {status_code} for URL: {search_url}. Exception {e}")
-     raise ex.ScraperHTTPError(status_code=status_code, message=f"Returned HTTP {status_code}")
-  except requests.exceptions.RequestException as e:
-      # Catch any other request-related exceptions, including HTTPError from raise_for_status()
-      log.error(f"[SCRAPE] Request failed for query: '{query}'. Status: {response.status_code if 'response' in locals() else 'N/A'}. Exception: {e}")
-      # Re-raise a more generic exception for the caller
-      raise ex.ScraperException(f"Generic request failure for query '{query}': {e}")
-      # raise Exception(f"Failed to fetch data from Amazon for query '{query}'. Details: {e}")
+  Args:
+    query (str): Search query for products
+    max_pages (int): Maximum number of pages to scrape (1-10)
   
-  # Parse the HTML content
-  try:
-    soup = BeautifulSoup(response.content, "html.parser")
-    log.debug("HTML content parsed with BeautifulSoup.")
-  except Exception as e:
-    log.error(f"[SCRAPE] BeautifulSoup parsing failed for query: '{query}'. Exception: {e}")
-    raise ex.ScraperParsingError(f"HTML parsing failed for query '{query}': {e}")
+  Returns:
+    List[Product]: Combined list of products from all scraped pages
+  """
+  log.info(f"Initiating product scraping for query: '{query}' with {max_pages} page(s)")
+
+  all_products = list()
+
+  for page_num in range(1, max_pages + 1):
+    log.info(f"Scraping page {page_num} of {max_pages} for query: '{query}'")
+
+    # Construct URL for specific page
+    if page_num == 1:
+      search_url = f"https://www.amazon.com/s?k={query.replace(" ", "+")}"
+    else:
+      search_url = f"https://www.amazon.com/s?k={query.replace(" ", "+")}&page={page_num}"
+    log.debug(f"Constructed search URL for page {page_num}: {search_url}")
+
+    try:
+      response = session.get(search_url, headers=headers, timeout=10)
+      response.raise_for_status()
+      log.info(f"Successfully fetched page {page_num} for query: '{query}' (Status: {response.status_code})")
+    except requests.exceptions.Timeout as e:
+      log.error(f"[SCRAPE] Timeout error while fetching page {page_num} URL: {search_url}. Exception: {e}")
+      if page_num == 1:
+        raise ex.ScraperTimeoutError(f"Request timed out while fetching data for query '{query}' page {page_num}.")
+      else:
+        log.warning(f"Skipping page {page_num} due to timeout, continuing with remaining pages")
+        continue
+    except requests.exceptions.ConnectionError as e:
+      log.error(f"[SCRAPE] Connection error while fetching page {page_num} URL: {search_url}. Exception: {e}")
+      if page_num == 1:
+        raise ex.ScraperConnectionError(f"Connection error for query '{query}' page {page_num}. Please check your network.")
+      else:
+        log.warning(f"Skipping page {page_num} due to connection error, continuing with remaining pages")
+        continue
+    except requests.exceptions.HTTPError as e:
+      status_code = response.status_code if "response" in locals() else None
+      log.error(f"[SCRAPE] HTTP error {status_code} for page {page_num} URL: {search_url}. Exception {e}")
+      if page_num == 1:
+        raise ex.ScraperHTTPError(status_code=status_code, message=f"Returned HTTP {status_code} for page {page_num}")
+      else:
+        log.warning(f"Skipping page {page_num} due to HTTP error {status_code}, continuing with remaining pages")
+        continue
+    except requests.exceptions.RequestException as e:
+      # Catch any other request-related exceptions, including HTTPError from raise_for_status()
+      log.error(f"[SCRAPE] Request failed for query: '{query}' page {page_num}. Status: {response.status_code if 'response' in locals() else 'N/A'}. Exception: {e}")
+      if page_num == 1:
+        # Re-raise a more generic exception for the caller
+        raise ex.ScraperException(f"Generic request failure for query '{query}' page {page_num}: {e}")
+      else:
+        log.warning(f"Skipping page {page_num} due to request failure, continuing with remaining pages")
+        continue
+
+    # Parse the HTML content
+    try:
+      soup = BeautifulSoup(response.content, "html.parser")
+      log.debug(f"HTML content parsed with BeautifulSoup for page {page_num}")
+    except Exception as e:
+      log.error(f"[SCRAPE] BeautifulSoup parsing failed for query: '{query}' page {page_num}. Exception: {e}")
+      if page_num == 1:
+        raise ex.ScraperParsingError(f"HTML parsing failed for query '{query}' page {page_num}: {e}")
+      else:
+        log.warning(f"Skipping page {page_num} due to parsing error, continuing with remaining pages")
+        continue
+    
+    # Extract products from current page
+    page_products = extract_products_from_page(soup, query, page_num)
+    all_products.extend(page_products)
+
+    log.info(f"Successfully extracted {len(page_products)} products from page {page_num}")
+
+    # Add delay between pages
+    if page_num < max_pages:
+      time_sleep = random.uniform(0.8, 1.8)
+      time.sleep(time_sleep)
+  
+  log.info(f"Completed scraping {max_pages} page(s). Total products found: {len(all_products)}")
+  return save_and_return_products(all_products, query)
+
+
+def extract_products_from_page(soup, query:str, page_num:int) -> List[Product]:
+  """
+  Extract product information from a single search results page.
+
+  Args:
+  soup: BeautifulSoup object of the parsed HTML
+  query (str): Search query for logging purposes
+  page_num (int): Page number for logging purposes
+
+  Returns:
+    List[Product]: List of products extracted from this page
+  """
 
   product_list = list()
 
@@ -140,9 +202,25 @@ def scrape_amazon_products(query: str) -> List[Product]:
        log.warning(f"[SCRAPE] Skipped one item due to parsing error: {e}")
        continue
     except Exception as e:
-       log.error(f"[SCRAPE] Unexpected error while parsing one item: {e}")
-       raise ex.ScraperParsinError(f"Unexpected parsing failure: {e}")    
+       log.error(f"[SCRAPE] Unexpected error while parsing one item on page {page_num}: {e}")
+       continue
+      #  raise ex.ScraperParsinError(f"Unexpected parsing failure: {e}")
+  
+  log.info(f"Finished extracting products from page {page_num}. Found {len(product_list)} products.")
+  return product_list
 
+
+def save_and_return_products(all_products: List[Product], query: str) -> List[Product]:
+  """
+  Save all products to both permanent and temp databases, then return the products.
+
+  Args:
+    all_products (List[Product]): All products collected from pagination
+    query (str): Search query
+
+  Returns:
+    List[Product]: The same list of products that were saved
+  """
   # Write data to both permanent DB (app.db) and live search temp DB (temp_app.db)
   permanent_session = None
   temp_app_session = None
@@ -157,7 +235,7 @@ def scrape_amazon_products(query: str) -> List[Product]:
     temp_app_session = get_temp_app_session()
 
     # Save app.db
-    for p in product_list:
+    for p in all_products:
       record = SearchRecord(
           query=query,
           title=p.title,
@@ -185,8 +263,8 @@ def scrape_amazon_products(query: str) -> List[Product]:
 
     permanent_session.commit()
     temp_app_session.commit()
-    log.info(f"Successfully saved {len(product_list)} products to permanent database for query: {query}")
-    log.info(f"Successfully saved {len(product_list)} products to live search temp database for query: '{query}'")
+    log.info(f"Successfully saved {len(all_products)} products to permanent database for query: {query}")
+    log.info(f"Successfully saved {len(all_products)} products to live search temp database for query: '{query}'")
 
   except Exception as e:
     log.error(f"[SCRAPE] Failed to save search results to DB: {e}")
@@ -200,8 +278,8 @@ def scrape_amazon_products(query: str) -> List[Product]:
     if temp_app_session:
        temp_app_session.close()
 
-  log.info(f"Finished scraping for query: '{query}'. Total products: {len(product_list)}")
-  return product_list
+  log.info(f"Finished scraping for query: '{query}'. Total products: {len(all_products)}")
+  return all_products
 
 
 def safe_extract(soup, selector, field_name):

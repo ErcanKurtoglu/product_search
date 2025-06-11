@@ -6,10 +6,11 @@ This project is a dynamic web scraper that retrieves product data from Amazon.co
 
 ## 📌 Features
 
-- 🔍 Scrape Amazon products by keyword
+- 🔍 Scrape Amazon products by keyword with pagination support
 - 📦 Product details include: title, price, rating, review count, image, and product link
 - ✅ Product validity check for data completeness
 - 🔁 Built-in retry strategy for unstable connections
+- 📄 Pagination support to scrape and return results from multiple pages
 - 📄 Structured JSON logging (file + console)
 - 💾 SQLite database to store results  
 - 🧮 Filter and sort products by price, rating, and review count using efficient DB queries  
