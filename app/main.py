@@ -12,7 +12,7 @@ from app.scraper import scrape_amazon_products
 from app.models import Product
 from app.database import init_permanent_db, init_temp_app_db, init_temp_hist_db
 import app.exceptions as ex
-from app.search_service import search_and_copy_to_hist_temp_db
+from app.search_service import search_and_copy_to_hist_temp_db, clear_database
 
 from app.logger import configure_logging, get_logger
 configure_logging()
@@ -26,6 +26,10 @@ async def lifespan(app:FastAPI):
   init_permanent_db()
   init_temp_app_db()
   init_temp_hist_db()
+
+  # Clear temp databases
+  clear_database("temp_app")
+  clear_database("temp_app")
 
   yield
   # If need can be added here for shutdown

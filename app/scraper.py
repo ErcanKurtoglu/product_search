@@ -197,8 +197,8 @@ def extract_products_from_page(soup, query:str, page_num:int) -> List[Product]:
         product_list.append(product)
       else:
         log.warning(f"Product item #{idx + 1} has no valid title or link found. Skipping.")
-        raise ex.ScraperParsinError("Missing title or link element")
-    except ex.ScraperParsinError as e:
+        raise ex.ScraperParsingError("Missing title or link element")
+    except ex.ScraperParsingError as e:
        log.warning(f"[SCRAPE] Skipped one item due to parsing error: {e}")
        continue
     except Exception as e:
